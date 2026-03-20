@@ -150,6 +150,7 @@ time in the simulation and summarise over size.
 ```{r}
 get_diag_summary <- function(params, sim, saved_g = NULL) {
     times <- getTimes(sim)
+    n_template <- initialN(params)
 
     map_dfr(seq_along(times), function(i) {
         time_i <- times[i]
@@ -160,9 +161,16 @@ get_diag_summary <- function(params, sim, saved_g = NULL) {
             other_params(params_i) <- other
         }
 
+        n_i <- N(sim)[i, , ]
+        if (is.null(dim(n_i))) {
+            n_i <- array(n_i,
+                         dim = dim(n_template),
+                         dimnames = dimnames(n_template))
+        }
+
         diag_i <- getTPO2Diagnostics(
             params_i,
-            n = N(sim)[i, , ],
+            n = n_i,
             n_pp = NResource(sim)[i, ],
             n_other = NOther(sim)[i, ],
             t = time_i
@@ -170,14 +178,14 @@ get_diag_summary <- function(params, sim, saved_g = NULL) {
 
         tibble(
             time = time_i,
-            raw_feeding_level = weighted.mean(diag_i$f, w = as.numeric(N(sim)[i, , ])),
+            raw_feeding_level = weighted.mean(diag_i$f, w = as.numeric(n_i)),
             realised_feeding_level = weighted.mean(diag_i$f_real,
-                                                   w = as.numeric(N(sim)[i, , ])),
-            g = weighted.mean(diag_i$g, w = as.numeric(N(sim)[i, , ])),
+                                                   w = as.numeric(n_i)),
+            g = weighted.mean(diag_i$g, w = as.numeric(n_i)),
             oxygen_intake = weighted.mean(diag_i$C,
-                                          w = as.numeric(N(sim)[i, , ])),
+                                          w = as.numeric(n_i)),
             active_metabolism = weighted.mean(pmax(0, diag_i$M_A),
-                                              w = as.numeric(N(sim)[i, , ]))
+                                              w = as.numeric(n_i))
         )
     })
 }
