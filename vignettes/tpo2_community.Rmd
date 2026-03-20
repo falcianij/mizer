@@ -1,0 +1,373 @@
+---
+title: "Using the temperature-oxygen community extension"
+output:
+  html_document:
+    toc: yes
+    fig_width: 7
+    fig_height: 5
+vignette: >
+  %\VignetteIndexEntry{Using the temperature-oxygen community extension}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>"
+)
+library(mizer)
+library(ggplot2)
+library(dplyr)
+library(reshape2)
+library(tidyr)
+library(purrr)
+```
+
+## Overview
+
+The temperature-oxygen community extension adds environmental forcing to a
+standard `newCommunityParams()` model. Once enabled with
+`enable_tpo2_community()`, the model keeps mizer's usual encounter dynamics,
+but modifies feeding, predation and energy allocation using time-varying
+temperature and dissolved oxygen forcing.
+
+This vignette shows how to:
+
+- enable the extension with simple forcing data;
+- inspect time-varying diagnostics such as raw feeding level, realised feeding
+  level and oxygen downregulation (`g`);
+- plot biomass time series and size spectra with `ggplot2`; and
+- explore alternative environmental scenarios with `project_tpo2()`.
+
+## Set up a temperature-oxygen community model
+
+We begin with the default community model and add a seasonal environmental
+forcing. The forcing can be supplied either as functions of time or as vectors
+with matching `times`.
+
+```{r}
+params <- newCommunityParams()
+
+years <- seq(0, 20, by = 0.25)
+forcing <- list(
+    times = years,
+    T_vec = 10 + 2 * sin(2 * pi * years / 5),
+    pO2_vec = 18 - 4 * (years / max(years)) + 1.5 * cos(2 * pi * years / 5)
+)
+
+params_tpo2 <- enable_tpo2_community(
+    params,
+    forcing = forcing,
+    tpo2_pars = list(
+        Q10_C = 2,
+        Q10_M = 2,
+        K_g = 2
+    )
+)
+```
+
+The extension stores its configuration in `other_params(params)$tpo2` and swaps
+in temperature-oxygen-aware rate functions for feeding level, predation rate
+and energy available for growth and reproduction.
+
+## A first projection
+
+Use `project_tpo2()` when you want the lagged oxygen limitation term to be
+updated across saved time steps.
+
+```{r}
+out_base <- project_tpo2(params_tpo2, t_max = 20, dt = 0.1, effort = 0)
+sim_base <- out_base$sim
+```
+
+We can also inspect the forcing directly.
+
+```{r}
+env_df <- tibble(
+    time = years,
+    temperature = forcing$T_vec,
+    oxygen = forcing$pO2_vec
+) |>
+    pivot_longer(cols = c(temperature, oxygen),
+                 names_to = "variable", values_to = "value")
+
+ggplot(env_df, aes(x = time, y = value, colour = variable)) +
+    geom_line(linewidth = 0.8) +
+    facet_wrap(vars(variable), scales = "free_y", ncol = 1) +
+    labs(x = "Time [years]", y = NULL,
+         title = "Environmental forcing used in the base run") +
+    theme_minimal()
+```
+
+## Biomass time series
+
+The standard mizer summaries continue to work for the `MizerSim` returned by
+`project_tpo2()`.
+
+```{r}
+biomass_df <- melt(getBiomass(sim_base))
+
+# The community model only has one species, but the same code scales to
+# multi-species models.
+ggplot(biomass_df, aes(x = time, y = value, colour = sp)) +
+    geom_line(linewidth = 0.9) +
+    labs(x = "Time [years]", y = "Biomass [g]",
+         colour = "Group",
+         title = "Community biomass through time") +
+    theme_minimal()
+```
+
+## Size spectra
+
+You can use the built-in `plotSpectra()` function, but it is often helpful to
+build a custom `ggplot2` figure from the simulation arrays.
+
+```{r}
+plotSpectra(sim_base, power = 2)
+```
+
+```{r}
+final_spectrum_df <- melt(N(sim_base)[idxFinalT(sim_base), , , drop = FALSE]) |>
+    filter(value > 0)
+
+ggplot(final_spectrum_df, aes(x = w, y = value * w^2, colour = sp)) +
+    geom_line(linewidth = 0.9) +
+    scale_x_log10() +
+    scale_y_log10() +
+    labs(x = "Size [g]", y = expression(N(w) %.% w^2),
+         colour = "Group",
+         title = "Final biomass spectrum under temperature-oxygen forcing") +
+    theme_minimal()
+```
+
+## Diagnostic quantities: raw feeding level, realised feeding level and `g`
+
+`getTPO2Diagnostics()` returns the main diagnostic arrays for a given model
+state. To turn these into a time series, evaluate the diagnostics for each saved
+time in the simulation and summarise over size.
+
+```{r}
+get_diag_summary <- function(params, sim, saved_g = NULL) {
+    times <- getTimes(sim)
+
+    map_dfr(seq_along(times), function(i) {
+        time_i <- times[i]
+        params_i <- params
+        if (!is.null(saved_g)) {
+            other <- other_params(params_i)
+            other$tpo2$g_prev <- saved_g[i, , ]
+            other_params(params_i) <- other
+        }
+
+        diag_i <- getTPO2Diagnostics(
+            params_i,
+            n = N(sim)[i, , ],
+            n_pp = NResource(sim)[i, ],
+            n_other = NOther(sim)[i, ],
+            t = time_i
+        )
+
+        tibble(
+            time = time_i,
+            raw_feeding_level = weighted.mean(diag_i$f, w = as.numeric(N(sim)[i, , ])),
+            realised_feeding_level = weighted.mean(diag_i$f_real,
+                                                   w = as.numeric(N(sim)[i, , ])),
+            g = weighted.mean(diag_i$g, w = as.numeric(N(sim)[i, , ])),
+            oxygen_intake = weighted.mean(diag_i$C,
+                                          w = as.numeric(N(sim)[i, , ])),
+            active_metabolism = weighted.mean(pmax(0, diag_i$M_A),
+                                              w = as.numeric(N(sim)[i, , ]))
+        )
+    })
+}
+
+diag_base_df <- get_diag_summary(params_tpo2, sim_base, out_base$saved_g) |>
+    pivot_longer(cols = -time, names_to = "metric", values_to = "value")
+
+ggplot(diag_base_df, aes(x = time, y = value, colour = metric)) +
+    geom_line(linewidth = 0.9) +
+    facet_wrap(vars(metric), scales = "free_y", ncol = 1) +
+    labs(x = "Time [years]", y = NULL,
+         title = "Time-varying temperature-oxygen diagnostics") +
+    theme_minimal() +
+    theme(legend.position = "none")
+```
+
+The distinction between `f` and `f_real` is important:
+
+- `f` is the raw feeding level implied by encounter rate and temperature-adjusted
+  intake;
+- `g` is the oxygen downregulation scalar; and
+- `f_real = f * g` is the realised feeding level after oxygen limitation.
+
+A size-resolved diagnostic view is often useful as well.
+
+```{r}
+diag_final <- getTPO2Diagnostics(
+    out_base$params_final,
+    t = max(getTimes(sim_base))
+)
+
+diag_size_df <- bind_rows(
+    melt(diag_final$f) |> mutate(metric = "raw feeding level"),
+    melt(diag_final$f_real) |> mutate(metric = "realised feeding level"),
+    melt(diag_final$g) |> mutate(metric = "oxygen downregulation g")
+) |>
+    rename(size = w, species = sp)
+
+ggplot(diag_size_df, aes(x = size, y = value, colour = metric)) +
+    geom_line(linewidth = 0.9) +
+    scale_x_log10() +
+    labs(x = "Size [g]", y = NULL,
+         title = "Size-dependent diagnostics at the final time") +
+    theme_minimal()
+```
+
+## Size-specific growth and reproduction context
+
+Because the extension changes energy available for growth and reproduction, it
+is useful to compare the usual mizer summaries alongside the new diagnostics.
+
+```{r}
+growth_df <- melt(getEGrowth(out_base$params_final)) |>
+    rename(size = w, species = sp)
+
+repro_df <- melt(getERepro(out_base$params_final)) |>
+    rename(size = w, species = sp)
+
+ggplot(growth_df, aes(x = size, y = value, colour = species)) +
+    geom_line(linewidth = 0.9) +
+    scale_x_log10() +
+    labs(x = "Size [g]", y = "Energy for growth",
+         title = "Growth energy across the size spectrum") +
+    theme_minimal()
+```
+
+```{r}
+ggplot(repro_df, aes(x = size, y = value, colour = species)) +
+    geom_line(linewidth = 0.9) +
+    scale_x_log10() +
+    labs(x = "Size [g]", y = "Energy for reproduction",
+         title = "Reproductive allocation across the size spectrum") +
+    theme_minimal()
+```
+
+## Scenario exploration
+
+A convenient workflow is to define a small helper that constructs forcing,
+enables the extension and runs `project_tpo2()`. That makes it easy to compare
+multiple climate or oxygen scenarios.
+
+```{r}
+run_tpo2_scenario <- function(name, temperature, oxygen, effort = 0) {
+    forcing_i <- list(
+        times = years,
+        T_vec = temperature,
+        pO2_vec = oxygen
+    )
+
+    params_i <- enable_tpo2_community(newCommunityParams(), forcing = forcing_i)
+    out_i <- project_tpo2(params_i, t_max = max(years), dt = 0.1, effort = effort)
+
+    list(
+        name = name,
+        params = params_i,
+        out = out_i
+    )
+}
+
+scenarios <- list(
+    run_tpo2_scenario(
+        "Baseline",
+        temperature = 10 + 2 * sin(2 * pi * years / 5),
+        oxygen = 18 - 4 * (years / max(years)) + 1.5 * cos(2 * pi * years / 5)
+    ),
+    run_tpo2_scenario(
+        "Warm, low oxygen",
+        temperature = 12 + 2.5 * sin(2 * pi * years / 5),
+        oxygen = 15 - 5 * (years / max(years))
+    ),
+    run_tpo2_scenario(
+        "Cool, oxygen-rich",
+        temperature = 9 + 1.5 * sin(2 * pi * years / 5),
+        oxygen = 19 + 1 * cos(2 * pi * years / 5)
+    )
+)
+```
+
+### Compare biomass trajectories
+
+```{r}
+scenario_biomass_df <- map_dfr(scenarios, function(x) {
+    melt(getBiomass(x$out$sim)) |>
+        mutate(scenario = x$name)
+})
+
+ggplot(scenario_biomass_df,
+       aes(x = time, y = value, colour = scenario, linetype = scenario)) +
+    geom_line(linewidth = 0.9) +
+    labs(x = "Time [years]", y = "Biomass [g]",
+         title = "Biomass response under alternative scenarios") +
+    theme_minimal()
+```
+
+### Compare size spectra at the final time
+
+```{r}
+scenario_spectra_df <- map_dfr(scenarios, function(x) {
+    melt(N(x$out$sim)[idxFinalT(x$out$sim), , , drop = FALSE]) |>
+        filter(value > 0) |>
+        mutate(scenario = x$name)
+})
+
+ggplot(scenario_spectra_df,
+       aes(x = w, y = value * w^2, colour = scenario, linetype = scenario)) +
+    geom_line(linewidth = 0.9) +
+    scale_x_log10() +
+    scale_y_log10() +
+    labs(x = "Size [g]", y = expression(N(w) %.% w^2),
+         title = "Final size spectra across scenarios") +
+    theme_minimal()
+```
+
+### Compare realised feeding level and `g`
+
+```{r}
+scenario_diag_df <- map_dfr(scenarios, function(x) {
+    get_diag_summary(x$params, x$out$sim, x$out$saved_g) |>
+        mutate(scenario = x$name)
+}) |>
+    pivot_longer(cols = c(raw_feeding_level, realised_feeding_level, g),
+                 names_to = "metric", values_to = "value")
+
+ggplot(scenario_diag_df,
+       aes(x = time, y = value, colour = scenario, linetype = scenario)) +
+    geom_line(linewidth = 0.9) +
+    facet_wrap(vars(metric), scales = "free_y", ncol = 1) +
+    labs(x = "Time [years]", y = NULL,
+         title = "Scenario comparison for feeding and oxygen limitation") +
+    theme_minimal()
+```
+
+These plots make it straightforward to ask practical scenario questions, for
+example:
+
+- How much does declining oxygen reduce realised feeding level?
+- Do warmer conditions increase metabolic pressure enough to suppress biomass?
+- Which sizes are most affected when `g` falls well below 1?
+
+## Where to go next
+
+This community example keeps the model intentionally simple. The same workflow
+extends naturally to larger mizer models:
+
+1. start from a calibrated `MizerParams` object;
+2. enable the temperature-oxygen extension with observed or scenario forcing;
+3. run `project_tpo2()`;
+4. summarise `getTPO2Diagnostics()` over time, species or size; and
+5. compare scenarios with the usual mizer summaries such as biomass, spectra,
+   feeding level, growth and reproduction.
+
+That combination of standard mizer outputs and explicit temperature-oxygen
+diagnostics is usually enough to build a transparent scenario-analysis workflow.
