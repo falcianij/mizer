@@ -29,8 +29,8 @@ Here: fishing mortality = catchability x selectivity x effort.
 
 Other mizer rate functions: 
 \code{\link{mizerEGrowth}()},
-\code{\link{mizerERepro}()},
 \code{\link{mizerEReproAndGrowth}()},
+\code{\link{mizerERepro}()},
 \code{\link{mizerEncounter}()},
 \code{\link{mizerFMort}()},
 \code{\link{mizerFeedingLevel}()},
@@ -39,6 +39,9 @@ Other mizer rate functions:
 \code{\link{mizerPredRate}()},
 \code{\link{mizerRDI}()},
 \code{\link{mizerRates}()},
-\code{\link{mizerResourceMort}()}
+\code{\link{mizerResourceMort}()},
+\code{\link{tpo2EReproAndGrowth}()},
+\code{\link{tpo2FeedingLevel}()},
+\code{\link{tpo2PredRate}()}
 }
 \concept{mizer rate functions}

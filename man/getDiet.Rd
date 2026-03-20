@@ -72,8 +72,8 @@ Other summary functions:
 \code{\link{getGrowthCurves}()},
 \code{\link{getN}()},
 \code{\link{getSSB}()},
-\code{\link{getYield}()},
-\code{\link{getYieldGear}()}
+\code{\link{getYieldGear}()},
+\code{\link{getYield}()}
 }
 \concept{summary functions}
 \concept{summary_function}

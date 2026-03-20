@@ -72,11 +72,11 @@ pred_rate <- getPredRate(params, n = N(sim)[15, , ],
 \seealso{
 Other rate functions: 
 \code{\link{getEGrowth}()},
-\code{\link{getERepro}()},
 \code{\link{getEReproAndGrowth}()},
+\code{\link{getERepro}()},
 \code{\link{getEncounter}()},
-\code{\link{getFMort}()},
 \code{\link{getFMortGear}()},
+\code{\link{getFMort}()},
 \code{\link{getFeedingLevel}()},
 \code{\link{getMort}()},
 \code{\link{getPredMort}()},

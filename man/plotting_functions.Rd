@@ -88,7 +88,7 @@ Other plotting functions:
 \code{\link{plotMizerSim}},
 \code{\link{plotPredMort}()},
 \code{\link{plotSpectra}()},
-\code{\link{plotYield}()},
-\code{\link{plotYieldGear}()}
+\code{\link{plotYieldGear}()},
+\code{\link{plotYield}()}
 }
 \concept{plotting functions}

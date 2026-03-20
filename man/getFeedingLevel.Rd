@@ -86,11 +86,11 @@ fl <- getFeedingLevel(sim, time_range = c(15, 20))
 \seealso{
 Other rate functions: 
 \code{\link{getEGrowth}()},
-\code{\link{getERepro}()},
 \code{\link{getEReproAndGrowth}()},
+\code{\link{getERepro}()},
 \code{\link{getEncounter}()},
-\code{\link{getFMort}()},
 \code{\link{getFMortGear}()},
+\code{\link{getFMort}()},
 \code{\link{getMort}()},
 \code{\link{getPredMort}()},
 \code{\link{getPredRate}()},

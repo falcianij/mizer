@@ -89,14 +89,17 @@ Other mizer rate functions:
 \code{\link{mizerEGrowth}()},
 \code{\link{mizerERepro}()},
 \code{\link{mizerEncounter}()},
-\code{\link{mizerFMort}()},
 \code{\link{mizerFMortGear}()},
+\code{\link{mizerFMort}()},
 \code{\link{mizerFeedingLevel}()},
 \code{\link{mizerMort}()},
 \code{\link{mizerPredMort}()},
 \code{\link{mizerPredRate}()},
 \code{\link{mizerRDI}()},
 \code{\link{mizerRates}()},
-\code{\link{mizerResourceMort}()}
+\code{\link{mizerResourceMort}()},
+\code{\link{tpo2EReproAndGrowth}()},
+\code{\link{tpo2FeedingLevel}()},
+\code{\link{tpo2PredRate}()}
 }
 \concept{mizer rate functions}

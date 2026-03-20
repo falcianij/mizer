@@ -66,11 +66,11 @@ growth["Sprat", "2"]
 \code{\link[=getERepro]{getERepro()}}, \code{\link[=getEReproAndGrowth]{getEReproAndGrowth()}}
 
 Other rate functions: 
-\code{\link{getERepro}()},
 \code{\link{getEReproAndGrowth}()},
+\code{\link{getERepro}()},
 \code{\link{getEncounter}()},
-\code{\link{getFMort}()},
 \code{\link{getFMortGear}()},
+\code{\link{getFMort}()},
 \code{\link{getFeedingLevel}()},
 \code{\link{getMort}()},
 \code{\link{getPredMort}()},
