@@ -42,12 +42,29 @@ This vignette shows how to:
 
 ## Set up a temperature-oxygen community model
 
-We begin with the default community model and add a seasonal environmental
-forcing. The forcing can be supplied either as functions of time or as vectors
-with matching `times`.
+We begin with a community model, but here we explicitly switch basal and active
+metabolism on so the oxygen limitation term has meaningful size structure. In
+particular, we set both the maximum-intake exponent `n` and the basal
+metabolism exponent `p` to 0.75, give the basal metabolic coefficient `ks` a
+positive value, and if `k` is zero we set the active-metabolism coefficient to
+match `ks`. The forcing can be supplied either as functions of time or as
+vectors with matching `times`.
 
 ```{r}
-params <- newCommunityParams()
+make_tpo2_community_params <- function() {
+    params <- newCommunityParams(n = 0.75)
+
+    species_params(params)$p <- 0.75
+    species_params(params)$ks <- 0.2 * species_params(params)$h
+    if (all(is.na(species_params(params)$k)) ||
+        all(species_params(params)$k == 0)) {
+        species_params(params)$k <- species_params(params)$ks
+    }
+
+    setMetabolicRate(params, p = 0.75, reset = TRUE)
+}
+
+params <- make_tpo2_community_params()
 
 years <- seq(0, 20, by = 0.25)
 forcing <- list(
@@ -62,14 +79,16 @@ params_tpo2 <- enable_tpo2_community(
     tpo2_pars = list(
         Q10_C = 2,
         Q10_M = 2,
+        Q10_A = 1.2,
         K_g = 2
     )
 )
 ```
 
-The extension stores its configuration in `other_params(params)$tpo2` and swaps
-in temperature-oxygen-aware rate functions for feeding level, predation rate
-and energy available for growth and reproduction.
+With this setup, basal metabolism still follows the allometric term from
+`setMetabolicRate()`, active metabolism uses the linear `k * w` term scaled by
+`U`, and the tpo2 extension applies the lagged oxygen multiplier `g_prev` only
+to the active/SDA contribution, not to the basal component.
 
 ## A first projection
 
@@ -275,7 +294,7 @@ run_tpo2_scenario <- function(name, temperature, oxygen, effort = 0) {
         pO2_vec = oxygen
     )
 
-    params_i <- enable_tpo2_community(newCommunityParams(), forcing = forcing_i)
+    params_i <- enable_tpo2_community(make_tpo2_community_params(), forcing = forcing_i)
     out_i <- project_tpo2(params_i, t_max = max(years), dt = 0.1, effort = effort)
 
     list(
