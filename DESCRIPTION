@@ -91,6 +91,7 @@ Collate:
     'animateSpectra.R'
     'newMultispeciesParams.R'
     'wrapper_functions.R'
+    'tpo2_community.R'
     'newSingleSpeciesParams.R'
     'steady.R'
     'extension.R'
