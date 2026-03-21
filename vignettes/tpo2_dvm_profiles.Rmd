@@ -1,0 +1,243 @@
+---
+title: "Using the temperature-oxygen-light DVM wrapper with profile data"
+output:
+  html_document:
+    toc: yes
+    fig_width: 8
+    fig_height: 5
+vignette: >
+  %\VignetteIndexEntry{Using the temperature-oxygen-light DVM wrapper with profile data}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r include = FALSE}
+knitr::opts_chunk$set(
+    collapse = TRUE,
+    comment = "#>"
+)
+library(mizer)
+library(ggplot2)
+library(dplyr)
+library(tidyr)
+library(reshape2)
+```
+
+## Overview
+
+This vignette shows a full end-to-end example for the temperature-oxygen-light
+DVM wrapper using a single site/scenario profile set. The workflow is:
+
+1. select one profile set, for example `site = "CCE"` and `scenario = "hist"`;
+2. build a `profile_data` table with depth, temperature, oxygen, light, and
+   micro/mesozooplankton concentrations;
+3. enable the DVM wrapper with `enable_tpo2_dvm()`;
+4. run a short projection with `project_tpo2_dvm()`; and
+5. plot day/night vertical biomass distributions and depth-size surface plots.
+
+The code below will use the CSV file if it is available in the repository. If
+it is not available, it falls back to a small synthetic `CCE`/`hist` example
+that uses the same column schema.
+
+## Build an example profile data set
+
+```{r}
+make_dvm_example_params <- function() {
+    params <- newCommunityParams(no_w = 40, n = 0.75)
+    species_params(params)$p <- 0.75
+    species_params(params)$ks <- 0.2 * species_params(params)$h
+    if (all(is.na(species_params(params)$k)) ||
+        all(species_params(params)$k == 0)) {
+        species_params(params)$k <- species_params(params)$ks
+    }
+    setMetabolicRate(params, p = 0.75, reset = TRUE)
+}
+
+make_synthetic_cce_hist <- function() {
+    data.frame(
+        site = "CCE",
+        scenario = "hist",
+        depth_mid_m = c(5, 15, 30, 50, 75, 110, 160, 230, 320),
+        depth_top_m = c(0, 10, 20, 40, 60, 90, 130, 190, 270),
+        depth_bot_m = c(10, 20, 40, 60, 90, 130, 190, 270, 370),
+        T_mean = c(17, 16, 14, 12, 10, 8.5, 7.5, 6.8, 6.2),
+        pO2_mean = c(18, 17, 15, 12, 9, 7.5, 6.5, 5.8, 5.2),
+        zmicro_mean = c(1.2, 1.0, 0.9, 0.7, 0.5, 0.35, 0.25, 0.15, 0.1),
+        zmeso_mean = c(0.08, 0.1, 0.15, 0.22, 0.3, 0.35, 0.32, 0.22, 0.12),
+        I_day_rel = c(1, 0.75, 0.4, 0.15, 0.05, 0.01, 0, 0, 0),
+        I_night_rel = 0
+    )
+}
+
+profile_path <- "data/profiles_emblematic_sites_hist_vs_ssp585_long.csv"
+if (file.exists(profile_path)) {
+    profiles_all <- read.csv(profile_path, stringsAsFactors = FALSE)
+    profile_data <- profiles_all |>
+        filter(site == "CCE", scenario == "hist") |>
+        arrange(depth_mid_m)
+} else {
+    profile_data <- make_synthetic_cce_hist()
+}
+
+profile_data
+```
+
+## Enable the DVM wrapper and run a projection
+
+```{r}
+params <- make_dvm_example_params()
+
+params_dvm <- enable_tpo2_dvm(
+    params,
+    dvm_forcing = list(
+        profile_data = profile_data,
+        profile_pars = list(
+            mol_to_g = 12
+        )
+    )
+)
+
+out_dvm <- project_tpo2_dvm(
+    params_dvm,
+    t_max = 30 / 365,
+    dt = 1 / 365,
+    effort = 0
+)
+
+profiles <- getTPO2DVMProfiles(out_dvm$params_final)
+final_n <- finalN(out_dvm$sim)
+head(dim(profiles$p_day))
+```
+
+## Day and night environmental and resource profiles
+
+```{r}
+site_profile_df <- profile_data |>
+    select(depth_mid_m, T_mean, pO2_mean, zmicro_mean, zmeso_mean,
+           I_day_rel, I_night_rel) |>
+    pivot_longer(-depth_mid_m, names_to = "variable", values_to = "value")
+
+ggplot(site_profile_df,
+       aes(x = value, y = depth_mid_m, colour = variable)) +
+    geom_line() +
+    geom_point() +
+    scale_y_reverse() +
+    facet_wrap(~ variable, scales = "free_x") +
+    labs(x = NULL, y = "Depth (m)",
+         title = "Example CCE historical profile forcing") +
+    theme_minimal() +
+    theme(legend.position = "none")
+```
+
+## Helper functions for biomass profiles
+
+```{r}
+get_profile_array <- function(profiles, final_n, which_profile = c("day", "night"),
+                              time_index = dim(profiles$p_day)[1]) {
+    which_profile <- match.arg(which_profile)
+    p_array <- if (which_profile == "day") profiles$p_day else profiles$p_night
+    z_vals <- as.numeric(dimnames(p_array)[[4]])
+    w_vals <- as.numeric(dimnames(final_n)[[2]])
+
+    expand.grid(
+        species = dimnames(final_n)[[1]],
+        size = dimnames(final_n)[[2]],
+        depth = dimnames(p_array)[[4]],
+        stringsAsFactors = FALSE
+    ) |>
+        mutate(
+            abundance = as.vector(sweep(p_array[time_index, , , , drop = FALSE][1, , , ],
+                                        c(1, 2), final_n, "*")),
+            weight = rep(w_vals, each = length(z_vals)),
+            biomass = abundance * weight,
+            depth = as.numeric(depth),
+            log10_size = log10(weight),
+            phase = which_profile
+        )
+}
+
+choose_decade_sizes <- function(final_n) {
+    w_vals <- as.numeric(dimnames(final_n)[[2]])
+    decade_targets <- 10^(seq(floor(log10(min(w_vals))),
+                              ceiling(log10(max(w_vals))), by = 1))
+    unique(vapply(decade_targets, function(target) {
+        which.min(abs(log10(w_vals) - log10(target)))
+    }, integer(1)))
+}
+
+profile_day_df <- get_profile_array(profiles, final_n, "day")
+profile_night_df <- get_profile_array(profiles, final_n, "night")
+profile_df <- bind_rows(profile_day_df, profile_night_df)
+selected_idx <- choose_decade_sizes(final_n)
+selected_sizes <- as.numeric(dimnames(final_n)[[2]])[selected_idx]
+```
+
+## Day/night biomass profiles for decade size classes
+
+```{r}
+selected_profiles <- profile_df |>
+    filter(weight %in% selected_sizes)
+
+ggplot(selected_profiles,
+       aes(x = biomass, y = depth, colour = phase)) +
+    geom_line() +
+    scale_y_reverse() +
+    facet_wrap(~ signif(weight, 2), scales = "free_x") +
+    labs(x = "Biomass density proxy",
+         y = "Depth (m)",
+         title = "Day/night biomass profiles for representative decade sizes",
+         colour = "Phase") +
+    theme_minimal()
+```
+
+## Depth-size surface plots
+
+These plots use depth on the y-axis, log body size on the x-axis, and colour to
+show the biomass in each size-depth bin.
+
+```{r}
+ggplot(profile_df, aes(x = log10_size, y = depth, fill = biomass)) +
+    geom_raster() +
+    scale_y_reverse() +
+    facet_wrap(~ phase) +
+    scale_fill_viridis_c(trans = "log10") +
+    labs(x = expression(log[10](body~mass~(g))),
+         y = "Depth (m)",
+         fill = "Biomass",
+         title = "Day/night biomass surfaces from the DVM wrapper") +
+    theme_minimal()
+```
+
+## Realised oxygen limitation profiles
+
+```{r}
+g_real_df <- bind_rows(
+    as.data.frame.table(profiles$g_real_day[dim(profiles$g_real_day)[1], , , ]) |>
+        mutate(phase = "day"),
+    as.data.frame.table(profiles$g_real_night[dim(profiles$g_real_night)[1], , , ]) |>
+        mutate(phase = "night")
+) |>
+    rename(species = Var1, size = Var2, depth = Var3, g_real = Freq) |>
+    mutate(depth = as.numeric(as.character(depth)),
+           size = as.numeric(as.character(size)),
+           log10_size = log10(size))
+
+ggplot(g_real_df, aes(x = log10_size, y = depth, fill = g_real)) +
+    geom_raster() +
+    scale_y_reverse() +
+    facet_wrap(~ phase) +
+    labs(x = expression(log[10](body~mass~(g))),
+         y = "Depth (m)",
+         fill = "g",
+         title = "Realised oxygen limitation by size and depth") +
+    theme_minimal()
+```
+
+## Notes
+
+- If the long-format profile CSV is available, this vignette will use the
+  actual `CCE` historical profile from that file.
+- If the file is absent, it falls back to a synthetic profile with the same
+  columns so the workflow remains runnable.
+- The surface plot is often the clearest way to inspect how the day and night
+  depth distributions vary across body sizes.
