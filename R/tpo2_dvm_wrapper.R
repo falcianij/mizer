@@ -225,6 +225,16 @@
     sweep(p_phase, c(1, 2), N_integrated, "*", check.margin = FALSE)
 }
 
+.dvm_slice_species_size <- function(x, z) {
+    out <- x[, , z, drop = FALSE]
+    array(out, dim = dim(out)[1:2], dimnames = dimnames(out)[1:2])
+}
+
+.dvm_slice_pred_rate <- function(x, z) {
+    out <- x[, , z, drop = FALSE]
+    array(out, dim = dim(out)[1:2], dimnames = dimnames(out)[1:2])
+}
+
 .dvm_light_scalar <- function(L, light_half_sat, light_hill) {
     L_pos <- pmax(L, 0)
     L_pos^light_hill / (L_pos^light_hill + light_half_sat^light_hill)
@@ -270,7 +280,7 @@
     n_other <- initialNOther(params)
     for (z in seq_len(nz)) {
         enc <- mizerEncounter(params,
-                              n = local_fish[, , z, drop = FALSE][, , 1],
+                              n = .dvm_slice_species_size(local_fish, z),
                               n_pp = local_resource[z, ],
                               n_other = n_other,
                               t = t)
@@ -288,11 +298,11 @@
     n_other <- initialNOther(params)
     for (z in seq_len(nz)) {
         res[, , z] <- mizerPredRate(params,
-                                    n = local_fish[, , z, drop = FALSE][, , 1],
+                                    n = .dvm_slice_species_size(local_fish, z),
                                     n_pp = initialNResource(params),
                                     n_other = n_other,
                                     t = t,
-                                    feeding_level = f_real[, , z, drop = FALSE][, , 1])
+                                    feeding_level = .dvm_slice_species_size(f_real, z))
     }
     res
 }
@@ -301,7 +311,7 @@
     nz <- dim(local_fish)[3]
     n_other <- initialNOther(params)
     f_mort <- mizerFMort(params,
-                         n = local_fish[, , 1, drop = FALSE][, , 1],
+                         n = .dvm_slice_species_size(local_fish, 1),
                          n_pp = initialNResource(params),
                          n_other = n_other,
                          t = t,
@@ -312,11 +322,11 @@
     mort <- array(0, dim = dim(local_fish), dimnames = dimnames(local_fish))
     for (z in seq_len(nz)) {
         pred_mort[, , z] <- mizerPredMort(params,
-                                          n = local_fish[, , z, drop = FALSE][, , 1],
+                                          n = .dvm_slice_species_size(local_fish, z),
                                           n_pp = initialNResource(params),
                                           n_other = n_other,
                                           t = t,
-                                          pred_rate = pred_rate[, , z, drop = FALSE][, , 1])
+                                          pred_rate = .dvm_slice_pred_rate(pred_rate, z))
         mort[, , z] <- pred_mort[, , z] + params@mu_b + f_mort
     }
     list(pred_mort = pred_mort, mort = mort)

@@ -168,3 +168,13 @@ test_that("profile_data can generate a depth-resolved resource spectrum", {
     expect_true(sum(day_resource[1, ]) > 0)
     expect_false(isTRUE(all.equal(day_resource[1, ], day_resource[3, ])))
 })
+
+
+test_that("depth slicing preserves species-by-size matrices for single-species models", {
+    x <- array(seq_len(12), dim = c(1, 4, 3),
+               dimnames = list(species = "Community", size = 1:4, depth = 1:3))
+    expect_identical(dim(.dvm_slice_species_size(x, 2)), c(1L, 4L))
+    y <- array(seq_len(15), dim = c(1, 5, 3),
+               dimnames = list(species = "Community", prey_size = 1:5, depth = 1:3))
+    expect_identical(dim(.dvm_slice_pred_rate(y, 2)), c(1L, 5L))
+})
