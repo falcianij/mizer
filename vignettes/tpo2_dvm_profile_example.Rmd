@@ -158,28 +158,29 @@ probability_df <- bind_rows(
     make_probability_df(last_step$p_night, "night")
 )
 
-depth_grid <- seq(min(cfg$geometry$z_mid), max(cfg$geometry$z_mid), by = 1)
+depth_plot_grid <- seq(sqrt(min(cfg$geometry$z_mid)), sqrt(max(cfg$geometry$z_mid)), by = 0.25)
 interpolate_probability_depth <- function(df) {
     split_df <- split(df, list(df$species, df$phase, df$size_g), drop = TRUE)
     bind_rows(lapply(split_df, function(x) {
         x <- x[order(x$depth_mid_m), ]
+        x_depth_plot <- sqrt(x$depth_mid_m)
         data.frame(
             species = x$species[1],
             phase = x$phase[1],
             size_g = x$size_g[1],
-            depth_mid_m = depth_grid,
+            depth_plot = depth_plot_grid,
+            depth_mid_m = depth_plot_grid^2,
             probability = stats::approx(
-                x = x$depth_mid_m,
+                x = x_depth_plot,
                 y = x$probability,
-                xout = depth_grid,
+                xout = depth_plot_grid,
                 rule = 2
             )$y
         )
     }))
 }
 
-probability_interp_df <- interpolate_probability_depth(probability_df) %>%
-    mutate(depth_plot = sqrt(depth_mid_m))
+probability_interp_df <- interpolate_probability_depth(probability_df)
 
 depth_breaks <- c(0, 5, 10, 25, 50, 100, 200, 500, 1000)
 depth_breaks <- depth_breaks[depth_breaks >= min(probability_interp_df$depth_mid_m) &
