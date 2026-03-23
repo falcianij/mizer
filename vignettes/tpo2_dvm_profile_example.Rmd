@@ -173,8 +173,9 @@ ggplot(biomass_df,
 ## Plot the final integrated size spectrum from mizer
 
 ```{r plot-integrated-spectrum, fig.width=10, fig.height=6}
-spectrum_df <- as.data.frame.table(N_int_final, responseName = "abundance") %>%
-    rename(species = Var1, size = Var2) %>%
+spectrum_df <- as.data.frame.table(N_int_final, responseName = "abundance")
+names(spectrum_df)[1:2] <- c("species", "size")
+spectrum_df <- spectrum_df %>%
     mutate(size_g = as.numeric(as.character(size)),
            biomass_density = abundance * size_g)
 
