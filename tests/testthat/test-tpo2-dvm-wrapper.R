@@ -126,3 +126,15 @@ test_that("enable_tpo2_dvm uses robust scalar forcing and expected setup dimensi
     expect_identical(dim(cfg$p_day),
                      c(dim(getMaxIntakeRate(params)), length(cfg$geometry$dz)))
 })
+
+
+test_that("profiles with NA-tailed deep cells are trimmed before DVM setup", {
+    profiles <- make_dvm_profiles()
+    site <- unique(profiles$site)[1]
+    prof <- profiles[profiles$site == site & profiles$scenario == "hist", ]
+    prof[nrow(prof), c("temp_C", "pO2_kPa", "zmicro", "zmeso", "I_day_rel", "I_night_rel")] <- NA
+    trimmed <- .dvm_prepare_profiles(prof)
+    expect_equal(nrow(trimmed), nrow(prof) - 1)
+    expect_true(all(stats::complete.cases(trimmed[, c("temp_C", "pO2_kPa", "zmicro",
+                                                      "zmeso", "I_day_rel", "I_night_rel")])) )
+})

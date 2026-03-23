@@ -70,6 +70,25 @@
     p
 }
 
+
+.dvm_prepare_profiles <- function(profile_df) {
+    required_cols <- c(
+        "depth_idx", "depth_mid_m", "depth_top_m", "depth_bot_m", "dz_m",
+        "temp_C", "pO2_kPa", "zmicro", "zmeso", "I_day_rel", "I_night_rel"
+    )
+    missing_cols <- setdiff(required_cols, names(profile_df))
+    if (length(missing_cols) > 0) {
+        stop("Profile data frame is missing columns: ",
+             paste(missing_cols, collapse = ", "))
+    }
+    keep <- stats::complete.cases(profile_df[, required_cols])
+    trimmed <- profile_df[keep, , drop = FALSE]
+    if (nrow(trimmed) == 0) {
+        stop("No valid depth cells remain after removing rows with missing geometry, abiotic, light, and resource values.")
+    }
+    trimmed[order(trimmed$depth_idx), , drop = FALSE]
+}
+
 .dvm_depth_geometry <- function(profile_df) {
     cols <- c("depth_idx", "depth_mid_m", "depth_top_m", "depth_bot_m", "dz_m")
     missing_cols <- setdiff(cols, names(profile_df))
@@ -453,6 +472,7 @@ enable_tpo2_dvm <- function(params, profiles, site, scenario = "hist",
     if (nrow(profile_df) == 0) {
         stop("No profile rows matched the requested site and scenario.")
     }
+    profile_df <- .dvm_prepare_profiles(profile_df)
     forcing <- list(
         T_fun = function(t) mean(profile_df$temp_C, na.rm = TRUE),
         pO2_fun = function(t) mean(profile_df$pO2_kPa, na.rm = TRUE)
