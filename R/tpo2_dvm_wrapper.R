@@ -99,9 +99,17 @@
     w_pp <- w_full(params)
     dw_pp <- dw_full(params)
     phi <- lapply(names(dvm_cfg$w_group), function(group) {
-        raw <- exp(- (log(w_pp) - log(dvm_cfg$w_group[[group]]))^2 /
-            (2 * dvm_cfg$sigma_group[[group]]^2))
-        raw / sum(raw * dw_pp)
+        log_raw <- - (log(w_pp) - log(dvm_cfg$w_group[[group]]))^2 /
+            (2 * dvm_cfg$sigma_group[[group]]^2)
+        log_raw <- log_raw - max(log_raw)
+        raw <- exp(log_raw)
+        denom <- sum(raw * dw_pp)
+        if (!is.finite(denom) || denom <= 0) {
+            raw[] <- 0
+            raw[which.min(abs(log(w_pp) - log(dvm_cfg$w_group[[group]])))] <- 1
+            denom <- sum(raw * dw_pp)
+        }
+        raw / denom
     })
     names(phi) <- names(dvm_cfg$w_group)
 
@@ -129,6 +137,9 @@
     n_pp_day_eff <- as.numeric(crossprod(depth_weights, n_pp_local))
     n_pp_night_eff <- as.numeric(crossprod(depth_weights, n_pp_local))
     n_pp_eff <- phase_weight_day * n_pp_day_eff + phase_weight_night * n_pp_night_eff
+    if (any(!is.finite(n_pp_eff))) {
+        stop("n_pp_eff contains non-finite values; check the local resource spectrum construction.")
+    }
     list(
         n_pp_day_eff = n_pp_day_eff,
         n_pp_night_eff = n_pp_night_eff,

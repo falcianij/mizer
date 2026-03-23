@@ -35,11 +35,13 @@ test_that("resource spectra are non-negative and integrate correctly", {
     prof <- profiles[profiles$site == site & profiles$scenario == "hist", ]
     resource <- .dvm_build_resource_spectra_from_cobalt(params, prof, dvm_cfg)
     geom <- .dvm_depth_geometry(prof)
+    expect_true(all(is.finite(resource$n_pp_local)))
     expect_true(all(resource$n_pp_local >= 0))
     expect_equal(rowSums(resource$b_pp_local * rep(dw_full(params), each = nrow(resource$b_pp_local))),
                  resource$B_micro + resource$B_meso, tolerance = 1e-8)
     eff <- .dvm_effective_npp(resource$n_pp_local, geom$w_depth)
     manual <- as.numeric(crossprod(geom$w_depth, resource$n_pp_local))
+    expect_true(all(is.finite(eff$n_pp_eff)))
     expect_equal(eff$n_pp_eff, manual)
 })
 
