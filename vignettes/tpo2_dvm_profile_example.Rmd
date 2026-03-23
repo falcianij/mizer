@@ -193,7 +193,10 @@ ggplot(probability_interp_df,
        aes(x = log10(size_g), y = depth_plot, fill = probability)) +
     geom_raster() +
     scale_y_reverse(breaks = depth_transform(depth_breaks), labels = depth_breaks) +
-    scale_fill_viridis_c() +
+    scale_fill_viridis_c(
+        trans = "sqrt",
+        breaks = c(0, 0.01, 0.05, 0.1, 0.25, 0.5, 1)
+    ) +
     facet_grid(phase ~ species) +
     labs(x = "log10 body size (g)", y = "Depth (m, pseudo-log stretched)",
          fill = "Probability",
