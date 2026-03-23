@@ -30,6 +30,29 @@
     cfg
 }
 
+
+.dvm_validate_setup <- function(params, geometry, resource, p_day0, p_night0,
+                                g_state_day0, g_state_night0) {
+    target_sp_size <- dim(getMaxIntakeRate(params))
+    target_sp_size_depth <- c(target_sp_size, length(geometry$dz))
+    if (!identical(dim(resource$n_pp_local), c(length(geometry$dz), length(w_full(params))))) {
+        stop("n_pp_local must have dimensions depth x resource_size = ",
+             paste(c(length(geometry$dz), length(w_full(params))), collapse = " x "),
+             "; got ", paste(dim(resource$n_pp_local), collapse = " x "), ".")
+    }
+    for (obj in list(p_day0 = p_day0, p_night0 = p_night0,
+                     g_state_day0 = g_state_day0, g_state_night0 = g_state_night0)) {
+        nm <- names(obj)
+        x <- obj[[1]]
+        if (!identical(dim(x), target_sp_size_depth)) {
+            stop(nm, " must have dimensions species x size x depth = ",
+                 paste(target_sp_size_depth, collapse = " x "),
+                 "; got ", paste(dim(x), collapse = " x "), ".")
+        }
+    }
+    invisible(TRUE)
+}
+
 .dvm_normalise_probabilities <- function(p, name = "probability array") {
     dims <- dim(p)
     flat <- matrix(p, nrow = prod(dims[1:2]), ncol = dims[3])
@@ -412,8 +435,11 @@ enable_tpo2_dvm <- function(params, profiles, site, scenario = "hist",
     if (nrow(profile_df) == 0) {
         stop("No profile rows matched the requested site and scenario.")
     }
-    forcing <- list(times = c(0, 1), T_vec = rep(mean(profile_df$temp_C), 2),
-                    pO2_vec = rep(mean(profile_df$pO2_kPa), 2))
+    forcing <- list(
+        T_fun = function(t) mean(profile_df$temp_C, na.rm = TRUE),
+        pO2_fun = function(t) mean(profile_df$pO2_kPa, na.rm = TRUE)
+    )
+    resource_dynamics(params) <- "resource_constant"
     params <- enable_tpo2_community(params, forcing = forcing, tpo2_pars = tpo2_pars)
     dvm_cfg <- utils::modifyList(.tpo2_dvm_defaults(), dvm_pars)
     geometry <- .dvm_depth_geometry(profile_df)
@@ -424,6 +450,8 @@ enable_tpo2_dvm <- function(params, profiles, site, scenario = "hist",
     if (is.null(p_night0)) p_night0 <- array(1 / dims[3], dim = dims, dimnames = dn)
     if (is.null(g_state_day0)) g_state_day0 <- array(1, dim = dims, dimnames = dn)
     if (is.null(g_state_night0)) g_state_night0 <- array(1, dim = dims, dimnames = dn)
+    .dvm_validate_setup(params, geometry, resource, p_day0, p_night0,
+                        g_state_day0, g_state_night0)
     .dvm_normalise_probabilities(p_day0, "p_day0")
     .dvm_normalise_probabilities(p_night0, "p_night0")
     effective_npp <- .dvm_effective_npp(resource$n_pp_local, geometry$w_depth,
@@ -455,7 +483,6 @@ enable_tpo2_dvm <- function(params, profiles, site, scenario = "hist",
     other$tpo2_dvm <- dvm_cfg
     other_params(params) <- other
     params <- setRateFunction(params, "Rates", "tpo2DVMMizerRates")
-    resource_dynamics(params) <- "resource_constant"
     initialNResource(params) <- effective_npp$n_pp_eff
     params
 }

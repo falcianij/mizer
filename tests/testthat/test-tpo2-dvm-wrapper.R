@@ -108,3 +108,19 @@ test_that("realised local fields can differ from forecast fields after reshuffli
                                   effort = 0, t = 0)
     expect_false(isTRUE(all.equal(forecast$nu, realised$nu, tolerance = 1e-12)))
 })
+
+
+test_that("enable_tpo2_dvm uses robust scalar forcing and expected setup dimensions", {
+    profiles <- make_dvm_profiles()
+    site <- unique(profiles$site)[1]
+    params <- enable_tpo2_dvm(newCommunityParams(), profiles = profiles,
+                              site = site, scenario = "hist")
+    cfg <- other_params(params)$tpo2_dvm
+    tpo2_cfg <- other_params(params)$tpo2
+    expect_true(is.function(tpo2_cfg$forcing$T$fun))
+    expect_true(is.function(tpo2_cfg$forcing$pO2$fun))
+    expect_identical(dim(cfg$resource$n_pp_local),
+                     c(length(cfg$geometry$dz), length(w_full(params))))
+    expect_identical(dim(cfg$p_day),
+                     c(dim(getMaxIntakeRate(params)), length(cfg$geometry$dz)))
+})
