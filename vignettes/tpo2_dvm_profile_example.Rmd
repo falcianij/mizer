@@ -158,13 +158,35 @@ biomass_df <- bind_rows(
     make_biomass_df(B_night_local, "night")
 )
 
-ggplot(biomass_df,
+depth_grid <- seq(min(cfg$geometry$z_mid), max(cfg$geometry$z_mid), by = 1)
+interpolate_biomass_depth <- function(df) {
+    split_df <- split(df, list(df$species, df$phase, df$size_g), drop = TRUE)
+    bind_rows(lapply(split_df, function(x) {
+        x <- x[order(x$depth_mid_m), ]
+        data.frame(
+            species = x$species[1],
+            phase = x$phase[1],
+            size_g = x$size_g[1],
+            depth_mid_m = depth_grid,
+            biomass = stats::approx(
+                x = x$depth_mid_m,
+                y = x$biomass,
+                xout = depth_grid,
+                rule = 2
+            )$y
+        )
+    }))
+}
+
+biomass_interp_df <- interpolate_biomass_depth(biomass_df)
+
+ggplot(biomass_interp_df,
        aes(x = log10(size_g), y = depth_mid_m, fill = biomass)) +
     geom_raster() +
     scale_y_reverse() +
     scale_fill_viridis_c(trans = "log10") +
     facet_grid(phase ~ species) +
-    labs(x = "log10 body size (g)", y = "Depth midpoint (m)",
+    labs(x = "log10 body size (g)", y = "Interpolated depth (m)",
          fill = "Biomass",
          title = "Final vertical day/night biomass structure by size class") +
     theme_bw()
