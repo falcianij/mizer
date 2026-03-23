@@ -178,15 +178,20 @@ interpolate_probability_depth <- function(df) {
     }))
 }
 
-probability_interp_df <- interpolate_probability_depth(probability_df)
+probability_interp_df <- interpolate_probability_depth(probability_df) %>%
+    mutate(depth_plot = sqrt(depth_mid_m))
+
+depth_breaks <- c(0, 5, 10, 25, 50, 100, 200, 500, 1000)
+depth_breaks <- depth_breaks[depth_breaks >= min(probability_interp_df$depth_mid_m) &
+    depth_breaks <= max(probability_interp_df$depth_mid_m)]
 
 ggplot(probability_interp_df,
-       aes(x = log10(size_g), y = depth_mid_m, fill = probability)) +
+       aes(x = log10(size_g), y = depth_plot, fill = probability)) +
     geom_raster() +
-    scale_y_reverse() +
+    scale_y_reverse(breaks = sqrt(depth_breaks), labels = depth_breaks) +
     scale_fill_viridis_c() +
     facet_grid(phase ~ species) +
-    labs(x = "log10 body size (g)", y = "Interpolated depth (m)",
+    labs(x = "log10 body size (g)", y = "Depth (m, sqrt-stretched)",
          fill = "Probability",
          title = "Final vertical day/night probability structure by size class") +
     theme_bw()
