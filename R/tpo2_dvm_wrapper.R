@@ -321,8 +321,10 @@
 .dvm_apply_kernel <- function(p_old, P) {
     dims <- dim(p_old)
     out <- array(0, dim = dims, dimnames = dimnames(p_old))
-    for (l in seq_len(dims[3])) {
-        out[, , l] <- apply(p_old * P[, , , l], c(1, 2), sum)
+    for (i in seq_len(dims[1])) {
+        for (j in seq_len(dims[2])) {
+            out[i, j, ] <- as.vector(p_old[i, j, ] %*% P[i, j, , ])
+        }
     }
     out
 }
@@ -330,13 +332,17 @@
 .dvm_transport_g <- function(p_old, P, g_old) {
     dims <- dim(g_old)
     out <- array(1, dim = dims, dimnames = dimnames(g_old))
-    for (l in seq_len(dims[3])) {
-        denom <- apply(p_old * P[, , , l], c(1, 2), sum)
-        numer <- apply(p_old * P[, , , l] * g_old, c(1, 2), sum)
-        sel <- denom > 0
-        out_l <- out[, , l]
-        out_l[sel] <- numer[sel] / denom[sel]
-        out[, , l] <- out_l
+    for (i in seq_len(dims[1])) {
+        for (j in seq_len(dims[2])) {
+            weights <- p_old[i, j, ]
+            for (l in seq_len(dims[3])) {
+                kernel_l <- P[i, j, , l]
+                denom <- sum(weights * kernel_l)
+                if (denom > 0) {
+                    out[i, j, l] <- sum(weights * kernel_l * g_old[i, j, ]) / denom
+                }
+            }
+        }
     }
     out
 }

@@ -138,3 +138,23 @@ test_that("profiles with NA-tailed deep cells are trimmed before DVM setup", {
     expect_true(all(stats::complete.cases(trimmed[, c("temp_C", "pO2_kPa", "zmicro",
                                                       "zmeso", "I_day_rel", "I_night_rel")])) )
 })
+
+
+test_that("kernel application remains dimension-safe for single-species arrays", {
+    p_old <- array(c(0.2, 0.3, 0.5), dim = c(1, 1, 3))
+    P <- array(0, dim = c(1, 1, 3, 3))
+    P[1, 1, , ] <- matrix(c(
+        1, 0, 0,
+        0, 1, 0,
+        0.5, 0, 0.5
+    ), nrow = 3, byrow = TRUE)
+    g_old <- array(c(1, 2, 3), dim = c(1, 1, 3))
+
+    p_new <- .dvm_apply_kernel(p_old, P)
+    g_new <- .dvm_transport_g(p_old, P, g_old)
+
+    expect_identical(dim(p_new), dim(p_old))
+    expect_identical(dim(g_new), dim(g_old))
+    expect_equal(sum(p_new), 1)
+    expect_true(all(is.finite(g_new)))
+})
