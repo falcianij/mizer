@@ -1,0 +1,209 @@
+---
+title: "Running the temperature-oxygen DVM wrapper from a site profile"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{Running the temperature-oxygen DVM wrapper from a site profile}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(collapse = TRUE, comment = "#>")
+library(mizer)
+library(ggplot2)
+library(dplyr)
+```
+
+## Goal
+
+This example shows how to:
+
+1. load one vertical forcing profile from `data/profiles_sites_hist_vs_ssp585_long.csv`,
+2. enable the temperature-oxygen DVM wrapper,
+3. project the integrated mizer model forward while storing day/night vertical structure,
+4. plot the vertical input profiles,
+5. plot the final day/night biomass-by-depth structure across size classes, and
+6. plot the final integrated size spectrum seen by mizer.
+
+## Load one site profile
+
+```{r load-profiles}
+profile_path <- if (file.exists("data/profiles_sites_hist_vs_ssp585_long.csv")) {
+    "data/profiles_sites_hist_vs_ssp585_long.csv"
+} else {
+    system.file(
+        "extdata",
+        "profiles_emblematic_sites_hist_vs_ssp585_long.csv",
+        package = "mizer"
+    )
+}
+
+profiles <- utils::read.csv(profile_path)
+site <- unique(profiles$site)[1]
+scenario <- "hist"
+profile_one <- profiles %>%
+    filter(site == !!site, scenario == !!scenario) %>%
+    arrange(depth_idx)
+
+profile_one %>%
+    select(site, scenario, depth_idx, depth_mid_m, temp_C, pO2_kPa,
+           zmicro, zmeso, I_day_rel, I_night_rel) %>%
+    head()
+```
+
+## Plot the vertical input profiles
+
+```{r plot-input-profiles, fig.width=10, fig.height=7}
+abiotic_df <- bind_rows(
+    profile_one %>%
+        transmute(depth_mid_m, variable = "Temperature (C)", phase = "shared",
+                  value = temp_C),
+    profile_one %>%
+        transmute(depth_mid_m, variable = "Oxygen (kPa)", phase = "shared",
+                  value = pO2_kPa),
+    profile_one %>%
+        transmute(depth_mid_m, variable = "Relative light", phase = "day",
+                  value = I_day_rel),
+    profile_one %>%
+        transmute(depth_mid_m, variable = "Relative light", phase = "night",
+                  value = I_night_rel),
+    profile_one %>%
+        transmute(depth_mid_m, variable = "zmicro (mol m^-3)", phase = "shared",
+                  value = zmicro),
+    profile_one %>%
+        transmute(depth_mid_m, variable = "zmeso (mol m^-3)", phase = "shared",
+                  value = zmeso)
+)
+
+ggplot(abiotic_df,
+       aes(x = value, y = depth_mid_m, colour = phase, group = phase)) +
+    geom_line() +
+    geom_point(size = 0.8) +
+    scale_y_reverse() +
+    facet_wrap(~ variable, scales = "free_x", ncol = 3) +
+    labs(x = NULL, y = "Depth midpoint (m)",
+         title = paste("Vertical input profiles for", site, scenario)) +
+    theme_bw()
+```
+
+## Enable and run the DVM wrapper
+
+```{r run-dvm}
+params <- newCommunityParams()
+params_dvm <- enable_tpo2_dvm(
+    params,
+    profiles = profiles,
+    site = site,
+    scenario = scenario
+)
+
+out <- project_tpo2_dvm(
+    params_dvm,
+    t_max = 5,
+    dt = 0.1,
+    effort = 0
+)
+
+cfg <- other_params(out$params_final)$tpo2_dvm
+last_step <- out$profiles_saved[[length(out$profiles_saved)]]
+N_int_final <- finalN(out$sim)
+```
+
+## Reconstruct final local day/night biomass distributions
+
+```{r reconstruct-local-biomass}
+integrated_to_local <- function(N_int, p_phase, H_total, dz) {
+    out <- array(0, dim = dim(p_phase), dimnames = dimnames(p_phase))
+    for (k in seq_along(dz)) {
+        out[, , k] <- N_int * H_total * p_phase[, , k] / dz[k]
+    }
+    out
+}
+
+N_day_local <- integrated_to_local(
+    N_int_final,
+    last_step$p_day,
+    cfg$geometry$H_total,
+    cfg$geometry$dz
+)
+N_night_local <- integrated_to_local(
+    N_int_final,
+    last_step$p_night,
+    cfg$geometry$H_total,
+    cfg$geometry$dz
+)
+
+B_day_local <- sweep(N_day_local, 2, w(params_dvm), "*")
+B_night_local <- sweep(N_night_local, 2, w(params_dvm), "*")
+```
+
+## Plot the last-step day/night biomass distribution by depth and size
+
+```{r plot-local-biomass, fig.width=12, fig.height=8}
+make_biomass_df <- function(B_local, phase_label) {
+    as.data.frame.table(B_local, responseName = "biomass") %>%
+        rename(species = Var1, size = Var2, depth = Var3) %>%
+        mutate(
+            size_g = as.numeric(as.character(size)),
+            depth = factor(depth, levels = dimnames(B_local)[[3]]),
+            depth_mid_m = cfg$geometry$z_mid[match(as.character(depth),
+                                                   dimnames(B_local)[[3]])],
+            phase = phase_label
+        )
+}
+
+biomass_df <- bind_rows(
+    make_biomass_df(B_day_local, "day"),
+    make_biomass_df(B_night_local, "night")
+)
+
+ggplot(biomass_df,
+       aes(x = log10(size_g), y = depth_mid_m, fill = biomass)) +
+    geom_raster() +
+    scale_y_reverse() +
+    scale_fill_viridis_c(trans = "log10") +
+    facet_grid(phase ~ species) +
+    labs(x = "log10 body size (g)", y = "Depth midpoint (m)",
+         fill = "Biomass",
+         title = "Final vertical day/night biomass structure by size class") +
+    theme_bw()
+```
+
+## Plot the final integrated size spectrum from mizer
+
+```{r plot-integrated-spectrum, fig.width=10, fig.height=6}
+spectrum_df <- as.data.frame.table(N_int_final, responseName = "abundance") %>%
+    rename(species = Var1, size = Var2) %>%
+    mutate(size_g = as.numeric(as.character(size)),
+           biomass_density = abundance * size_g)
+
+ggplot(spectrum_df, aes(x = size_g, y = abundance, colour = species)) +
+    geom_line() +
+    scale_x_log10() +
+    scale_y_log10() +
+    labs(x = "Body size (g)", y = "Integrated abundance density",
+         title = "Final integrated mizer size spectrum") +
+    theme_bw()
+```
+
+```{r plot-integrated-biomass-spectrum, fig.width=10, fig.height=6}
+ggplot(spectrum_df, aes(x = size_g, y = biomass_density, colour = species)) +
+    geom_line() +
+    scale_x_log10() +
+    scale_y_log10() +
+    labs(x = "Body size (g)", y = "Integrated biomass density",
+         title = "Final integrated biomass spectrum") +
+    theme_bw()
+```
+
+## Inspect the last-step realised day/night fields
+
+```{r inspect-last-step-fields}
+str(list(
+    p_day = dim(last_step$p_day),
+    p_night = dim(last_step$p_night),
+    realized_day_nu = dim(last_step$realized_day$nu),
+    realized_night_mu = dim(last_step$realized_night$mu),
+    n_pp_eff = length(last_step$effective$n_pp_eff)
+))
+```
