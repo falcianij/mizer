@@ -40,14 +40,21 @@
              paste(c(length(geometry$dz), length(w_full(params))), collapse = " x "),
              "; got ", paste(dim(resource$n_pp_local), collapse = " x "), ".")
     }
-    for (obj in list(p_day0 = p_day0, p_night0 = p_night0,
-                     g_state_day0 = g_state_day0, g_state_night0 = g_state_night0)) {
-        nm <- names(obj)
-        x <- obj[[1]]
+    arrays_to_check <- list(
+        p_day0 = p_day0,
+        p_night0 = p_night0,
+        g_state_day0 = g_state_day0,
+        g_state_night0 = g_state_night0
+    )
+    for (nm in names(arrays_to_check)) {
+        x <- arrays_to_check[[nm]]
         if (!identical(dim(x), target_sp_size_depth)) {
+            got_dim <- dim(x)
             stop(nm, " must have dimensions species x size x depth = ",
                  paste(target_sp_size_depth, collapse = " x "),
-                 "; got ", paste(dim(x), collapse = " x "), ".")
+                 "; got ",
+                 if (is.null(got_dim)) "<no dim>" else paste(got_dim, collapse = " x "),
+                 ".")
         }
     }
     invisible(TRUE)
