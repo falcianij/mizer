@@ -158,18 +158,21 @@ probability_df <- bind_rows(
     make_probability_df(last_step$p_night, "night")
 )
 
-depth_plot_grid <- seq(sqrt(min(cfg$geometry$z_mid)), sqrt(max(cfg$geometry$z_mid)), by = 0.25)
+depth_transform <- function(z) log1p(z / 25)
+depth_inverse <- function(z_plot) 25 * (exp(z_plot) - 1)
+depth_plot_grid <- seq(depth_transform(min(cfg$geometry$z_mid)),
+                       depth_transform(max(cfg$geometry$z_mid)), by = 0.05)
 interpolate_probability_depth <- function(df) {
     split_df <- split(df, list(df$species, df$phase, df$size_g), drop = TRUE)
     bind_rows(lapply(split_df, function(x) {
         x <- x[order(x$depth_mid_m), ]
-        x_depth_plot <- sqrt(x$depth_mid_m)
+        x_depth_plot <- depth_transform(x$depth_mid_m)
         data.frame(
             species = x$species[1],
             phase = x$phase[1],
             size_g = x$size_g[1],
             depth_plot = depth_plot_grid,
-            depth_mid_m = depth_plot_grid^2,
+            depth_mid_m = depth_inverse(depth_plot_grid),
             probability = stats::approx(
                 x = x_depth_plot,
                 y = x$probability,
@@ -182,17 +185,17 @@ interpolate_probability_depth <- function(df) {
 
 probability_interp_df <- interpolate_probability_depth(probability_df)
 
-depth_breaks <- c(0, 5, 10, 25, 50, 100, 200, 500, 1000)
+depth_breaks <- c(0, 5, 10, 25, 50, 100, 200, 500, 1000, 2000, 3000)
 depth_breaks <- depth_breaks[depth_breaks >= min(probability_interp_df$depth_mid_m) &
     depth_breaks <= max(probability_interp_df$depth_mid_m)]
 
 ggplot(probability_interp_df,
        aes(x = log10(size_g), y = depth_plot, fill = probability)) +
     geom_raster() +
-    scale_y_reverse(breaks = sqrt(depth_breaks), labels = depth_breaks) +
+    scale_y_reverse(breaks = depth_transform(depth_breaks), labels = depth_breaks) +
     scale_fill_viridis_c() +
     facet_grid(phase ~ species) +
-    labs(x = "log10 body size (g)", y = "Depth (m, sqrt-stretched)",
+    labs(x = "log10 body size (g)", y = "Depth (m, pseudo-log stretched)",
          fill = "Probability",
          title = "Final vertical day/night probability structure by size class") +
     theme_bw()
