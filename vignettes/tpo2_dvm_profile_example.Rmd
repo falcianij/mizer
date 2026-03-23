@@ -137,29 +137,29 @@ B_day_local <- sweep(N_day_local, 2, w(params_dvm), "*")
 B_night_local <- sweep(N_night_local, 2, w(params_dvm), "*")
 ```
 
-## Plot the last-step day/night biomass distribution by depth and size
+## Plot the last-step day/night probability distribution by depth and size
 
-```{r plot-local-biomass, fig.width=12, fig.height=8}
-make_biomass_df <- function(B_local, phase_label) {
-    df <- as.data.frame.table(B_local, responseName = "biomass")
+```{r plot-local-probability, fig.width=12, fig.height=8}
+make_probability_df <- function(p_local, phase_label) {
+    df <- as.data.frame.table(p_local, responseName = "probability")
     names(df)[1:3] <- c("species", "size", "depth")
     df %>%
         mutate(
             size_g = as.numeric(as.character(size)),
-            depth = factor(depth, levels = dimnames(B_local)[[3]]),
+            depth = factor(depth, levels = dimnames(p_local)[[3]]),
             depth_mid_m = cfg$geometry$z_mid[match(as.character(depth),
-                                                   dimnames(B_local)[[3]])],
+                                                   dimnames(p_local)[[3]])],
             phase = phase_label
         )
 }
 
-biomass_df <- bind_rows(
-    make_biomass_df(B_day_local, "day"),
-    make_biomass_df(B_night_local, "night")
+probability_df <- bind_rows(
+    make_probability_df(last_step$p_day, "day"),
+    make_probability_df(last_step$p_night, "night")
 )
 
 depth_grid <- seq(min(cfg$geometry$z_mid), max(cfg$geometry$z_mid), by = 1)
-interpolate_biomass_depth <- function(df) {
+interpolate_probability_depth <- function(df) {
     split_df <- split(df, list(df$species, df$phase, df$size_g), drop = TRUE)
     bind_rows(lapply(split_df, function(x) {
         x <- x[order(x$depth_mid_m), ]
@@ -168,9 +168,9 @@ interpolate_biomass_depth <- function(df) {
             phase = x$phase[1],
             size_g = x$size_g[1],
             depth_mid_m = depth_grid,
-            biomass = stats::approx(
+            probability = stats::approx(
                 x = x$depth_mid_m,
-                y = x$biomass,
+                y = x$probability,
                 xout = depth_grid,
                 rule = 2
             )$y
@@ -178,17 +178,17 @@ interpolate_biomass_depth <- function(df) {
     }))
 }
 
-biomass_interp_df <- interpolate_biomass_depth(biomass_df)
+probability_interp_df <- interpolate_probability_depth(probability_df)
 
-ggplot(biomass_interp_df,
-       aes(x = log10(size_g), y = depth_mid_m, fill = biomass)) +
+ggplot(probability_interp_df,
+       aes(x = log10(size_g), y = depth_mid_m, fill = probability)) +
     geom_raster() +
     scale_y_reverse() +
-    scale_fill_viridis_c(trans = "log10") +
+    scale_fill_viridis_c() +
     facet_grid(phase ~ species) +
     labs(x = "log10 body size (g)", y = "Interpolated depth (m)",
-         fill = "Biomass",
-         title = "Final vertical day/night biomass structure by size class") +
+         fill = "Probability",
+         title = "Final vertical day/night probability structure by size class") +
     theme_bw()
 ```
 
