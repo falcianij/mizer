@@ -39,6 +39,7 @@ profile_path <- if (file.exists("data/profiles_sites_hist_vs_ssp585_long.csv")) 
 }
 
 profiles <- utils::read.csv(profile_path)
+unique(profiles$site)
 site <- unique(profiles$site)[1]
 scenario <- "hist"
 profile_one <- profiles %>%
@@ -77,7 +78,7 @@ abiotic_df <- bind_rows(
 
 ggplot(abiotic_df,
        aes(x = value, y = depth_mid_m, colour = phase, group = phase)) +
-    geom_line() +
+    geom_path() +
     geom_point(size = 0.8) +
     scale_y_reverse() +
     facet_wrap(~ variable, scales = "free_x", ncol = 3) +
